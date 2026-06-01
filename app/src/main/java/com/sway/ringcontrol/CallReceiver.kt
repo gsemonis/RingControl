@@ -44,6 +44,9 @@ class CallReceiver : BroadcastReceiver() {
         val sharedPrefs = context.getSharedPreferences("RingControlPrefs", Context.MODE_PRIVATE)
         val isOverridden = sharedPrefs.getBoolean("is_overridden", false)
 
+        // Stop the custom ring service
+        context.stopService(Intent(context, RingService::class.java))
+
         if (isOverridden) {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -100,18 +103,21 @@ class CallReceiver : BroadcastReceiver() {
         // Normalize both numbers by removing everything except digits
         val cleanIncoming = incomingNumber.replace("\\D".toRegex(), "")
 
-        val isMatched = selectedNumbers.any { 
+        val matchedNumber = selectedNumbers.firstOrNull { 
             val cleanSelected = it.replace("\\D".toRegex(), "")
             // Check if one contains the other (to handle +1 or area code differences)
             cleanSelected.isNotEmpty() && cleanIncoming.isNotEmpty() && 
             (cleanSelected.contains(cleanIncoming) || cleanIncoming.contains(cleanSelected))
         }
 
-        if (isMatched) {
+        if (matchedNumber != null) {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             try {
+                // Check Always Ring preference
+                val alwaysRing = sharedPrefs.getBoolean("always_ring_$matchedNumber", true)
+
                 // Save current state before overriding
                 val currentRingerMode = audioManager.ringerMode
                 val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING)
@@ -124,17 +130,30 @@ class CallReceiver : BroadcastReceiver() {
                     putBoolean("is_overridden", true)
                 }
 
-                // 1. Bypass DND if possible
-                if (notificationManager.isNotificationPolicyAccessGranted) {
-                    notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
-                }
+                if (alwaysRing) {
+                    // 1. Bypass DND if possible
+                    if (notificationManager.isNotificationPolicyAccessGranted) {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                    }
 
-                // 2. Set Volume to MAX and Mode to NORMAL
-                audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
-                val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
-                audioManager.setStreamVolume(AudioManager.STREAM_RING, maxVolume, AudioManager.FLAG_SHOW_UI)
+                    // 2. Set Volume to MAX and Mode to NORMAL
+                    audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                    val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
+                    audioManager.setStreamVolume(AudioManager.STREAM_RING, maxVolume, AudioManager.FLAG_SHOW_UI)
+                }
                 
-                Log.d("CallReceiver", "Bypassed silence successfully for $incomingNumber. Saved state: Mode=$currentRingerMode, Vol=$currentVolume, DND=$currentDndFilter")
+                // 3. Start Custom Ring & Vibration Service
+                val ringtoneUri = sharedPrefs.getString("ring_uri_$matchedNumber", null)
+                val vibPattern = sharedPrefs.getString("vib_$matchedNumber", "Default")
+                
+                val serviceIntent = Intent(context, RingService::class.java).apply {
+                    putExtra("ringtone_uri", ringtoneUri)
+                    putExtra("vibration_pattern", vibPattern)
+                }
+                
+                context.startForegroundService(serviceIntent)
+                
+                Log.d("CallReceiver", "Bypassed silence and started custom ring for $incomingNumber. Pattern: $vibPattern")
             } catch (e: Exception) {
                 Log.e("CallReceiver", "Error overriding audio settings", e)
             }
