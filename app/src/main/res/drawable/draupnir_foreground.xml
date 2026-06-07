@@ -1,0 +1,49 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- The Master Ring (Draupnir) -->
+    <path
+        android:pathData="M54,54 m-28,0 a28,28 0,1 1,56 0 a28,28 0,1 1,-56 0"
+        android:strokeWidth="8"
+        android:strokeColor="#FFD600" />
+
+    <!-- Outer Glow / Decorative Edge -->
+    <path
+        android:pathData="M54,54 m-32,0 a32,32 0,1 1,64 0 a32,32 0,1 1,-64 0"
+        android:strokeWidth="1"
+        android:strokeColor="#FFF59D"
+        android:strokeAlpha="0.5" />
+
+    <!-- The 8 "Dropped" Rings (Stylized as radiating rings/sound waves) -->
+    <path
+        android:pathData="M54,54 m-38,0 a38,38 0,1 1,76 0 a38,38 0,1 1,-76 0"
+        android:strokeWidth="3"
+        android:strokeColor="#FFD600"
+        android:strokeAlpha="0.4" />
+    <path
+        android:pathData="M54,54 m-46,0 a46,46 0,1 1,92 0 a46,46 0,1 1,-92 0"
+        android:strokeWidth="2"
+        android:strokeColor="#FFD600"
+        android:strokeAlpha="0.2" />
+
+    <!-- Valknut in Center (Three interlocked triangles) -->
+    <path
+        android:pathData="M54,42 L42,63 L66,63 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFD600"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M44,52 L32,73 L56,73 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFD600"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M64,52 L52,73 L76,73 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFD600"
+        android:strokeLineJoin="round" />
+
+</vector>

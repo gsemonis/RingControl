@@ -1,0 +1,45 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- The Spear Shaft (Heavy Steel) -->
+    <path
+        android:pathData="M22,86 L52,56"
+        android:strokeWidth="6"
+        android:strokeColor="#B0BEC5"
+        android:strokeLineCap="round" />
+
+    <!-- The Spear Head (Large Golden Blade) -->
+    <path
+        android:fillColor="#FFC107"
+        android:pathData="M48,60 L62,60 L92,16 L74,28 L56,42 Z" />
+
+    <!-- Shading on the blade for depth -->
+    <path
+        android:fillColor="#FFA000"
+        android:pathData="M62,60 L92,16 L74,28 Z" />
+
+    <!-- Sound/Ring Waves (Representing the "Ring" in RingControl) -->
+    <path
+        android:pathData="M80,45 Q95,60 80,75"
+        android:strokeWidth="4"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeAlpha="0.6" />
+    <path
+        android:pathData="M65,65 Q80,80 65,95"
+        android:strokeWidth="4"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeAlpha="0.3" />
+
+    <!-- Central Runic Detail (Odin's Mark) -->
+    <path
+        android:pathData="M68,38 L76,46 M76,38 L68,46"
+        android:strokeWidth="2"
+        android:strokeColor="#37474F"
+        android:strokeLineCap="round" />
+
+</vector>
