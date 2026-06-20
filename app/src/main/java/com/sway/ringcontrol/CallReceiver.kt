@@ -20,11 +20,13 @@ class CallReceiver : BroadcastReceiver() {
 
                 incomingNumber?.let { num ->
                     val sharedPrefs = context.getSharedPreferences("RingControlPrefs", Context.MODE_PRIVATE)
+                    val whitelistedNumbers = sharedPrefs.getStringSet("selected_numbers", emptySet()) ?: emptySet()
                     val blacklistedNumbers = sharedPrefs.getStringSet("blacklisted_numbers", emptySet()) ?: emptySet()
+                    val isGlobalSilence = sharedPrefs.getBoolean("global_silence", false)
                     
-                    // If blacklisted, do NOTHING (effectively silencing the call as the phone was silent/vibrate)
-                    if (RingControlLogic.findWhitelistedMatch(num, blacklistedNumbers, sharedPrefs) != null) {
-                        Log.d("RingControl", "BLACKLIST CALL MATCH: Suppressing alert for $num")
+                    // --- SILENCE CHECK ---
+                    if (RingControlLogic.shouldSilence(num, whitelistedNumbers, blacklistedNumbers, isGlobalSilence, sharedPrefs)) {
+                        Log.d("RingControl", "SILENCING CALL: Suppressing alert for $num")
                         return
                     }
 

@@ -16,6 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +36,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
@@ -76,6 +79,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -101,11 +105,9 @@ data class RingControlContactData(val id: String, val name: String, val phoneNum
 class RingControlActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Enable edge-to-edge display for modern Android looks
         enableEdgeToEdge()
         setContent {
             RingControlTheme {
-                // Entry point for the application UI
                 RingControlAppRoot()
             }
         }
@@ -113,8 +115,7 @@ class RingControlActivity : ComponentActivity() {
 }
 
 /**
- * Root Composable that manages the high-level state of the app,
- * such as permission status and whether onboarding is complete.
+ * Root Composable that manages the high-level state of the app.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -122,14 +123,12 @@ fun RingControlAppRoot() {
     val context = LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("RingControlPrefs", Context.MODE_PRIVATE) }
     
-    // State for controlling the visibility of the configuration dialog
     var showCustomDialog by remember { mutableStateOf(false) }
     var editingContacts by remember { mutableStateOf<List<RingControlContactData>>(emptyList()) }
 
-    // Track permission status reactively
     var hasContactsPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED,
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
         )
     }
     var hasPhoneStatePermission by remember {
@@ -152,12 +151,10 @@ fun RingControlAppRoot() {
         )
     }
     
-    // Flag to determine if the user has completed the initial onboarding
     var setupFinished by remember { 
         mutableStateOf(sharedPrefs.getBoolean("setup_finished", false)) 
     }
 
-    // Launcher for requesting multiple permissions at once
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -166,11 +163,8 @@ fun RingControlAppRoot() {
                           (permissions[Manifest.permission.READ_CALL_LOG] ?: false) &&
                           (permissions[Manifest.permission.RECEIVE_SMS] ?: false)
         hasPhoneStatePermission = phoneStatus
-        
-        // Ensure notification permission is also granted for testing on Android 13+
     }
 
-    // Observer to refresh permission status whenever the user returns to the app from Settings
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -194,7 +188,6 @@ fun RingControlAppRoot() {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            // Show App Bar only after setup is complete and all permissions are granted
             if (setupFinished && allGranted) {
                 CenterAlignedTopAppBar(
                     title = { Text("RingControl", style = MaterialTheme.typography.headlineMedium) },
@@ -207,28 +200,38 @@ fun RingControlAppRoot() {
         }
     ) { innerPadding ->
         if (setupFinished && allGranted) {
-            // Main Contact List Screen
             Column(modifier = Modifier.padding(innerPadding)) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.Start,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Whitelisted Contacts", style = MaterialTheme.typography.titleLarge)
+                    Text("Silence Non-Whitelisted", style = MaterialTheme.typography.titleMedium)
+                    
+                    var isGlobalSilence by remember { 
+                        mutableStateOf(sharedPrefs.getBoolean("global_silence", false)) 
+                    }
+                    Switch(
+                        checked = isGlobalSilence,
+                        onCheckedChange = { 
+                            isGlobalSilence = it
+                            sharedPrefs.edit { putBoolean("global_silence", it) }
+                        },
+                        modifier = Modifier.scale(0.8f)
+                    )
                 }
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 
                 Box(modifier = Modifier.fillMaxSize()) {
-                    RingControlContactList(
-                        onConfigure = { selectedContacts ->
-                            editingContacts = selectedContacts
-                            showCustomDialog = true
-                        }
-                    )
+                    RingControlContactList { selectedContacts ->
+                        editingContacts = selectedContacts
+                        showCustomDialog = true
+                    }
                 }
             }
         } else {
-            // Initial Setup Onboarding flow
             OnboardingScreen(
                 hasContacts = hasContactsPermission,
                 hasPhone = hasPhoneStatePermission,
@@ -255,25 +258,22 @@ fun RingControlAppRoot() {
                     setupFinished = true
                 },
                 onRefresh = {
-                    // Manual refresh triggered by UI button if needed
                     hasContactsPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
                     hasPhoneStatePermission = (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) &&
                             (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED) &&
                             (ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED)
                     notificationPolicyState.value = notificationManager.isNotificationPolicyAccessGranted
                     hasNotificationListenerAccess = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")?.contains(context.packageName) ?: false
-                },
+                }
             )
         }
     }
 
-    // Global customization dialog shown when one or more contacts are being configured
     if (showCustomDialog && editingContacts.isNotEmpty()) {
         ContactCustomizationDialog(
             contacts = editingContacts,
             onDismiss = { 
                 showCustomDialog = false 
-                // Clear contacts after closing dialog to free memory
                 editingContacts = emptyList()
             },
             sharedPrefs = sharedPrefs
@@ -294,12 +294,11 @@ fun OnboardingScreen(
     onRequestDnd: () -> Unit,
     onRequestListener: () -> Unit,
     onComplete: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
 ) {
     var currentStep by remember { mutableIntStateOf(0) }
     val allGranted = hasContacts && hasPhone && hasDnd && hasListener
     
-    // Automatically move to the next logical step if permission is granted while on that screen
     LaunchedEffect(hasContacts, hasPhone, hasDnd, hasListener) {
         if (((hasContacts && hasPhone) && (currentStep == 1))) currentStep = 2
         if ((hasDnd && (currentStep == 2))) currentStep = 3
@@ -367,7 +366,6 @@ fun OnboardingScreen(
         
         Spacer(Modifier.height(32.dp))
         
-        // Visual indicator of onboarding progress
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             repeat(5) { index ->
                 Card(
@@ -421,24 +419,28 @@ fun RingControlContactList(onConfigure: (List<RingControlContactData>) -> Unit) 
     var contacts by remember { mutableStateOf(emptyList<RingControlContactData>()) }
     val sharedPrefs = remember { context.getSharedPreferences("RingControlPrefs", Context.MODE_PRIVATE) }
     
-    // Set of numbers currently in the whitelist
     var whitelistedNumbers by remember {
         mutableStateOf(sharedPrefs.getStringSet("selected_numbers", emptySet()) ?: emptySet())
     }
-    // Set of numbers currently in the blacklist
     var blacklistedNumbers by remember {
         mutableStateOf(sharedPrefs.getStringSet("blacklisted_numbers", emptySet()) ?: emptySet())
     }
-    // Selection set for batch configuration
     var selectedForBatch by remember { mutableStateOf(setOf<String>()) }
     var searchQuery by remember { mutableStateOf("") }
 
-    // Clear selection when the configuration dialog is dismissed
-    // We achieve this by checking if we have editing contacts in the parent
-    // But a more robust way is to just let the FAB handle the clear signal.
+    var whitelistedExpanded by remember { mutableStateOf(true) }
+    var blacklistedExpanded by remember { mutableStateOf(true) }
+    var othersExpanded by remember { mutableStateOf(true) }
 
+    // Automatically expand groups if searching
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.isNotEmpty()) {
+            whitelistedExpanded = true
+            blacklistedExpanded = true
+            othersExpanded = true
+        }
+    }
 
-    // Reactively filter and group the contact list
     val whitelistedGroup by remember {
         derivedStateOf {
             val base = if (searchQuery.isEmpty()) contacts
@@ -469,7 +471,6 @@ fun RingControlContactList(onConfigure: (List<RingControlContactData>) -> Unit) 
         }
     }
 
-    // Load contacts on first composition
     LaunchedEffect(Unit) { contacts = fetchPhoneContacts(context) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -485,38 +486,59 @@ fun RingControlContactList(onConfigure: (List<RingControlContactData>) -> Unit) 
             )
 
             LazyColumn(contentPadding = PaddingValues(bottom = 80.dp)) {
-                // WHITELISTED SECTION
                 if (whitelistedGroup.isNotEmpty()) {
-                    item { ListHeader("Whitelisted") }
-                    items(whitelistedGroup) { contact ->
-                        ContactRowInstance(contact, whitelistedNumbers, blacklistedNumbers, selectedForBatch, sharedPrefs) { newW, newB, newS ->
-                            whitelistedNumbers = newW
-                            blacklistedNumbers = newB
-                            selectedForBatch = newS
+                    item { 
+                        ListHeader(
+                            text = "Whitelisted (${whitelistedGroup.size})", 
+                            isExpanded = whitelistedExpanded,
+                            onToggle = { whitelistedExpanded = !whitelistedExpanded }
+                        ) 
+                    }
+                    if (whitelistedExpanded) {
+                        items(whitelistedGroup) { contact ->
+                            ContactRowInstance(contact, whitelistedNumbers, blacklistedNumbers, selectedForBatch, sharedPrefs) { newW, newB, newS ->
+                                whitelistedNumbers = newW
+                                blacklistedNumbers = newB
+                                selectedForBatch = newS
+                            }
                         }
                     }
                 }
 
-                // BLACKLISTED SECTION
                 if (blacklistedGroup.isNotEmpty()) {
-                    item { ListHeader("Blacklisted") }
-                    items(blacklistedGroup) { contact ->
-                        ContactRowInstance(contact, whitelistedNumbers, blacklistedNumbers, selectedForBatch, sharedPrefs) { newW, newB, newS ->
-                            whitelistedNumbers = newW
-                            blacklistedNumbers = newB
-                            selectedForBatch = newS
+                    item { 
+                        ListHeader(
+                            text = "Blacklisted (${blacklistedGroup.size})", 
+                            isExpanded = blacklistedExpanded,
+                            onToggle = { blacklistedExpanded = !blacklistedExpanded }
+                        ) 
+                    }
+                    if (blacklistedExpanded) {
+                        items(blacklistedGroup) { contact ->
+                            ContactRowInstance(contact, whitelistedNumbers, blacklistedNumbers, selectedForBatch, sharedPrefs) { newW, newB, newS ->
+                                whitelistedNumbers = newW
+                                blacklistedNumbers = newB
+                                selectedForBatch = newS
+                            }
                         }
                     }
                 }
 
-                // OTHERS SECTION
                 if (otherGroup.isNotEmpty()) {
-                    item { ListHeader("Other Contacts") }
-                    items(otherGroup) { contact ->
-                        ContactRowInstance(contact, whitelistedNumbers, blacklistedNumbers, selectedForBatch, sharedPrefs) { newW, newB, newS ->
-                            whitelistedNumbers = newW
-                            blacklistedNumbers = newB
-                            selectedForBatch = newS
+                    item { 
+                        ListHeader(
+                            text = "Other Contacts (${otherGroup.size})", 
+                            isExpanded = othersExpanded,
+                            onToggle = { othersExpanded = !othersExpanded }
+                        ) 
+                    }
+                    if (othersExpanded) {
+                        items(otherGroup) { contact ->
+                            ContactRowInstance(contact, whitelistedNumbers, blacklistedNumbers, selectedForBatch, sharedPrefs) { newW, newB, newS ->
+                                whitelistedNumbers = newW
+                                blacklistedNumbers = newB
+                                selectedForBatch = newS
+                            }
                         }
                     }
                 }
@@ -529,12 +551,11 @@ fun RingControlContactList(onConfigure: (List<RingControlContactData>) -> Unit) 
             }
         }
 
-        // Action button for configuring selected contacts
         if (selectedForBatch.isNotEmpty()) {
             ExtendedFloatingActionButton(
                 onClick = { 
                     onConfigure(contacts.filter { selectedForBatch.contains(it.id) }) 
-                    selectedForBatch = emptySet() // CLEAR SELECTION AFTER CLICK
+                    selectedForBatch = emptySet() 
                 },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -548,13 +569,26 @@ fun RingControlContactList(onConfigure: (List<RingControlContactData>) -> Unit) 
 }
 
 @Composable
-fun ListHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.secondary,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
-    )
+fun ListHeader(text: String, isExpanded: Boolean, onToggle: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onToggle() }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.secondary
+        )
+        Icon(
+            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = if (isExpanded) "Collapse" else "Expand",
+            tint = MaterialTheme.colorScheme.secondary
+        )
+    }
 }
 
 @Composable
@@ -585,12 +619,11 @@ fun ContactRowInstance(
                 contact.phoneNumbers.forEach { putString("name_$it", contact.name) }
             }
             onUpdate(newWhitelist, newBlacklist, selectedForBatch)
-        },
-        onBatchSelectChange = { nowSelected ->
-            val newBatch = if (nowSelected) selectedForBatch + contact.id else selectedForBatch - contact.id
-            onUpdate(whitelistedNumbers, blacklistedNumbers, newBatch)
         }
-    )
+    ) { nowSelected ->
+        val newBatch = if (nowSelected) selectedForBatch + contact.id else selectedForBatch - contact.id
+        onUpdate(whitelistedNumbers, blacklistedNumbers, newBatch)
+    }
 }
 
 
@@ -651,7 +684,7 @@ fun RingControlContactRow(
                             onClick = { onStateChange(index - 1) },
                             selected = index == currentState,
                             icon = {}, 
-                            colors = if (index == 0 && currentState == 0) {
+                            colors = if ((index == 0) && (currentState == 0)) {
                                 SegmentedButtonDefaults.colors(activeContainerColor = MaterialTheme.colorScheme.errorContainer, activeContentColor = MaterialTheme.colorScheme.error)
                             } else {
                                 SegmentedButtonDefaults.colors()
@@ -682,7 +715,6 @@ fun ContactCustomizationDialog(
     val context = LocalContext.current
     val isMultiSelect = contacts.size > 1
     
-    // UI state for customization options
     var callAlwaysRing by remember { mutableStateOf(true) }
     var callVibrationPattern by remember { mutableStateOf("Default") }
     var callRingtoneName by remember { mutableStateOf("System Default") }
@@ -693,10 +725,8 @@ fun ContactCustomizationDialog(
     var smsRingtoneName by remember { mutableStateOf("System Default") }
     var smsRingtoneUri by remember { mutableStateOf<String?>(null) }
     
-    // New field for custom name matching (e.g., Facebook names)
     var customMatchName by remember { mutableStateOf("") }
 
-    // Load initial values if editing a single contact
     LaunchedEffect(contacts) {
         if (!isMultiSelect) {
             val contact = contacts.first()
@@ -766,7 +796,7 @@ fun ContactCustomizationDialog(
 
                 item {
                     HorizontalDivider()
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(8.dp))
                     Text("SMS/RCS ALERTS", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Bypass Silence & Alert", modifier = Modifier.weight(1f))
@@ -830,7 +860,7 @@ fun ContactCustomizationDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VibrationDropdown(current: String, onSelect: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(value = false) }
     val patterns = listOf("Default", "Pulse", "Heartbeat", "SOS", "Rapid")
 
     Column {

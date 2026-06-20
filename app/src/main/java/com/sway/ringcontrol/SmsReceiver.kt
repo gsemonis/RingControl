@@ -22,11 +22,11 @@ class SmsReceiver : BroadcastReceiver() {
         val sharedPrefs = context.getSharedPreferences("RingControlPrefs", Context.MODE_PRIVATE)
         val whitelistedNumbers = sharedPrefs.getStringSet("selected_numbers", emptySet()) ?: emptySet()
         val blacklistedNumbers = sharedPrefs.getStringSet("blacklisted_numbers", emptySet()) ?: emptySet()
+        val isGlobalSilence = sharedPrefs.getBoolean("global_silence", false)
 
-        // 1. CHECK BLACKLIST FIRST
-        if (RingControlLogic.findWhitelistedMatch(senderNumber, blacklistedNumbers, sharedPrefs) != null) {
-            // KILL the broadcast. This prevents the default SMS app from seeing it
-            // Note: This only works for standard SMS, not RCS/Chat.
+        // 1. SILENCE CHECK FIRST
+        if (RingControlLogic.shouldSilence(senderNumber, whitelistedNumbers, blacklistedNumbers, isGlobalSilence, sharedPrefs)) {
+            // KILL the broadcast if it's blacklisted or global silence is ON
             abortBroadcast()
             return
         }

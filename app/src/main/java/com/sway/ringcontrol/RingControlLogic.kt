@@ -47,6 +47,31 @@ object RingControlLogic {
     }
 
     /**
+     * Checks if a contact should be silenced based on the global silence flag
+     * and the contact's presence in the whitelist or blacklist.
+     */
+    fun shouldSilence(
+        senderInfo: String,
+        whitelistedNumbers: Set<String>,
+        blacklistedNumbers: Set<String>,
+        isGlobalSilenceEnabled: Boolean,
+        sharedPrefs: SharedPreferences
+    ): Boolean {
+        // If they are explicitly blacklisted, always silence
+        if (findWhitelistedMatch(senderInfo, blacklistedNumbers, sharedPrefs) != null) {
+            return true
+        }
+
+        // If they are whitelisted, never silence
+        if (findWhitelistedMatch(senderInfo, whitelistedNumbers, sharedPrefs) != null) {
+            return false
+        }
+
+        // If not whitelisted and global silence is ON, silence them
+        return isGlobalSilenceEnabled
+    }
+
+    /**
      * Normalizes a phone number to digits only for comparison.
      */
     fun cleanNumber(number: String): String {

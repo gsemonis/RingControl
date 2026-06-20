@@ -28,46 +28,23 @@ class NotificationListener : NotificationListenerService() {
 
         if (monitoredApps.contains(packageName) && title.isNotEmpty()) {
             val sharedPrefs = getSharedPreferences("RingControlPrefs", MODE_PRIVATE)
+            val whitelistedNumbers = sharedPrefs.getStringSet("selected_numbers", emptySet()) ?: emptySet()
             val blacklistedNumbers = sharedPrefs.getStringSet("blacklisted_numbers", emptySet()) ?: emptySet()
+            val isGlobalSilence = sharedPrefs.getBoolean("global_silence", false)
             
-            // --- BLACKLIST CHECK (The "Ghost" Logic) ---
-            // We use a more flexible name match for group chats (e.g., "John Smith (Work)")
-            val isBlacklisted = isPersonInSet(title, blacklistedNumbers, sharedPrefs)
+            // --- SILENCE CHECK ---
+            val shouldSilence = RingControlLogic.shouldSilence(title, whitelistedNumbers, blacklistedNumbers, isGlobalSilence, sharedPrefs)
             
-            if (isBlacklisted) {
-                Log.d("RingControl", "BLACKLIST: Killing notification from $title to prevent Android Auto pop-up.")
-                // 1. Dismiss the notification instantly
+            if (shouldSilence) {
+                Log.d("RingControl", "SILENCING: Dismissing notification from $title")
+                // IMMEDIATELY dismiss the notification
                 cancelNotification(sbn.key)
-                
-                // 2. On modern Android, we also "snooze" or silence the stream briefly
-                // Note: Standard dismissal on phone usually clears the Android Auto projected UI.
                 return 
             }
 
             // --- WHITELIST CHECK ---
             checkAndOverride(title)
         }
-    }
-
-    private fun isPersonInSet(senderInfo: String, set: Set<String>, sharedPrefs: android.content.SharedPreferences): Boolean {
-        for (savedNumber in set) {
-            val contactName = sharedPrefs.getString("name_$savedNumber", "") ?: ""
-            val customName = sharedPrefs.getString("custom_name_$savedNumber", "") ?: ""
-            
-            // USE STRICT EQUALS instead of contains to prevent false positives
-            if ((contactName.isNotEmpty() && contactName.equals(senderInfo, ignoreCase = true)) ||
-                (customName.isNotEmpty() && customName.equals(senderInfo, ignoreCase = true))) {
-                return true
-            }
-            
-            // Number matching (last 10 digits) - only if senderInfo looks like a number
-            val cleanIncoming = senderInfo.replace("\\D".toRegex(), "")
-            val cleanSaved = savedNumber.replace("\\D".toRegex(), "")
-            if ((cleanIncoming.length >= 7) && (cleanSaved.length >= 7) && (cleanIncoming.takeLast(10) == cleanSaved.takeLast(10))) {
-                return true
-            }
-        }
-        return false
     }
 
     private fun checkAndOverride(senderInfo: String) {
