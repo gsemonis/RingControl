@@ -14,7 +14,7 @@ class NotificationListener : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val extras = sbn.notification.extras
-        val title = extras.getString(Notification.EXTRA_TITLE) ?: ""
+        val title = extras.getString(Notification.EXTRA_TITLE)
         val packageName = sbn.packageName
         
         // Define apps we want to monitor
@@ -26,7 +26,7 @@ class NotificationListener : NotificationListenerService() {
             "com.sway.ringcontrol", // Added for in-app testing
         )
 
-        if (monitoredApps.contains(packageName) && title.isNotEmpty()) {
+        if (monitoredApps.contains(packageName) && !title.isNullOrEmpty()) {
             val sharedPrefs = getSharedPreferences("RingControlPrefs", MODE_PRIVATE)
             val whitelistedNumbers = sharedPrefs.getStringSet("selected_numbers", emptySet()) ?: emptySet()
             val blacklistedNumbers = sharedPrefs.getStringSet("blacklisted_numbers", emptySet()) ?: emptySet()
@@ -47,7 +47,7 @@ class NotificationListener : NotificationListenerService() {
         }
     }
 
-    private fun checkAndOverride(senderInfo: String) {
+    private fun checkAndOverride(senderInfo: String?) {
         val sharedPrefs = getSharedPreferences("RingControlPrefs", MODE_PRIVATE)
         val whitelistedNumbers = sharedPrefs.getStringSet("selected_numbers", emptySet()) ?: emptySet()
         

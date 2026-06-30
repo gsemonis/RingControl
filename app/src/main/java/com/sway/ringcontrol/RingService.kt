@@ -5,9 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.app.UiModeManager
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.Ringtone
@@ -28,6 +30,39 @@ class RingService : Service() {
     companion object {
         private var lastTriggerTime = 0L
         private var lastTriggerSender = ""
+
+        /**
+         * Safely restores audio settings from SharedPreferences if they were overridden.
+         * Can be called from anywhere (e.g. CallReceiver) to ensure cleanup.
+         */
+        fun restoreAudioState(context: Context) {
+            val sharedPrefs = context.getSharedPreferences("RingControlPrefs", MODE_PRIVATE)
+            if (sharedPrefs.getBoolean("is_overridden", false)) {
+                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+                val oldMode = sharedPrefs.getInt("old_ringer_mode", AudioManager.RINGER_MODE_NORMAL)
+                val oldRing = sharedPrefs.getInt("old_ring_vol", 0)
+                val oldNotif = sharedPrefs.getInt("old_notif_vol", 0)
+                val oldMusic = sharedPrefs.getInt("old_music_vol", audioManager.getStreamVolume(AudioManager.STREAM_MUSIC))
+                val oldDnd = sharedPrefs.getInt("old_dnd_filter", NotificationManager.INTERRUPTION_FILTER_ALL)
+
+                try {
+                    audioManager.ringerMode = oldMode
+                    audioManager.setStreamVolume(AudioManager.STREAM_RING, oldRing, 0)
+                    audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, oldNotif, 0)
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, oldMusic, 0)
+                    
+                    if (notificationManager.isNotificationPolicyAccessGranted) {
+                        notificationManager.setInterruptionFilter(oldDnd)
+                    }
+                    
+                    sharedPrefs.edit { putBoolean("is_overridden", false) }
+                } catch (e: Exception) {
+                    Log.e("RingControl", "Restore error", e)
+                }
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -85,8 +120,17 @@ class RingService : Service() {
         try {
             val uri = uriStr?.toUri() ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
             ringtone = RingtoneManager.getRingtone(this, uri)
+            
+            // If headphones are in, we use USAGE_MEDIA to ensure it's heard in the headset 
+            // even if the ringer mode is silent (as we won't override it in that case).
+            val usage = if (isHeadsetConnected()) {
+                AudioAttributes.USAGE_MEDIA
+            } else {
+                AudioAttributes.USAGE_NOTIFICATION_RINGTONE
+            }
+
             ringtone?.audioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setUsage(usage)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
             ringtone?.play()
@@ -98,11 +142,18 @@ class RingService : Service() {
     private fun playSmsAlert(uriStr: String?) {
         try {
             val uri = uriStr?.toUri() ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            
+            val usage = if (isHeadsetConnected()) {
+                AudioAttributes.USAGE_MEDIA
+            } else {
+                AudioAttributes.USAGE_NOTIFICATION
+            }
+
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(this@RingService, uri)
                 setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                        .setUsage(usage)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build(),
                 )
@@ -111,6 +162,17 @@ class RingService : Service() {
             }
         } catch (e: Exception) {
             Log.e("RingControl", "SMS audio error", e)
+        }
+    }
+
+    private fun isHeadsetConnected(): Boolean {
+        val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        return devices.any {
+            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
         }
     }
 
@@ -124,6 +186,7 @@ class RingService : Service() {
                 putInt("old_ringer_mode", audioManager.ringerMode)
                 putInt("old_ring_vol", audioManager.getStreamVolume(AudioManager.STREAM_RING))
                 putInt("old_notif_vol", audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION))
+                putInt("old_music_vol", audioManager.getStreamVolume(AudioManager.STREAM_MUSIC))
                 putInt("old_dnd_filter", notificationManager.currentInterruptionFilter)
                 putBoolean("is_overridden", true)
             }
@@ -132,35 +195,20 @@ class RingService : Service() {
         if (notificationManager.isNotificationPolicyAccessGranted) {
             notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
         }
-        audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
-        audioManager.setStreamVolume(AudioManager.STREAM_RING, audioManager.getStreamMaxVolume(AudioManager.STREAM_RING), 0)
-        audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION), 0)
-    }
 
-    private fun restoreAudioState() {
-        val sharedPrefs = getSharedPreferences("RingControlPrefs", MODE_PRIVATE)
-        if (sharedPrefs.getBoolean("is_overridden", false)) {
-            val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-
-            val oldMode = sharedPrefs.getInt("old_ringer_mode", AudioManager.RINGER_MODE_NORMAL)
-            val oldRing = sharedPrefs.getInt("old_ring_vol", 0)
-            val oldNotif = sharedPrefs.getInt("old_notif_vol", 0)
-            val oldDnd = sharedPrefs.getInt("old_dnd_filter", NotificationManager.INTERRUPTION_FILTER_ALL)
-
-            try {
-                audioManager.ringerMode = oldMode
-                audioManager.setStreamVolume(AudioManager.STREAM_RING, oldRing, 0)
-                audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, oldNotif, 0)
-                
-                if (notificationManager.isNotificationPolicyAccessGranted) {
-                    notificationManager.setInterruptionFilter(oldDnd)
-                }
-                
-                sharedPrefs.edit { putBoolean("is_overridden", false) }
-            } catch (e: Exception) {
-                Log.e("RingControl", "Restore error", e)
-            }
+        if (isHeadsetConnected()) {
+            // When headphones are connected, DO NOT change ringer mode to NORMAL.
+            // This prevents the system from blasting the ringtone through the external speaker.
+            // Instead, we ensure the Media volume is high enough to be heard in the headphones.
+            audioManager.setStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                (audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * 0.8).toInt(),
+                0
+            )
+        } else {
+            audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
+            audioManager.setStreamVolume(AudioManager.STREAM_RING, audioManager.getStreamMaxVolume(AudioManager.STREAM_RING), 0)
+            audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION), 0)
         }
     }
 
@@ -200,7 +248,7 @@ class RingService : Service() {
 
     override fun onDestroy() {
         cleanupAlerts()
-        restoreAudioState()
+        restoreAudioState(this)
         super.onDestroy()
     }
 }

@@ -17,10 +17,12 @@ object RingControlLogic {
      * @return The matched phone number if found, null otherwise.
      */
     fun findWhitelistedMatch(
-        senderInfo: String,
+        senderInfo: String?,
         whitelistedNumbers: Set<String>,
         sharedPrefs: SharedPreferences,
     ): String? {
+        if (senderInfo.isNullOrEmpty()) return null
+
         val cleanIncoming = senderInfo.replace("\\D".toRegex(), "")
 
         for (savedNumber in whitelistedNumbers) {
@@ -35,7 +37,7 @@ object RingControlLogic {
             }
 
             // 2. Strict 10-Digit Number Match
-            if ((cleanIncoming.length >= 7) && (cleanSaved.length >= 7)) {
+            if (cleanIncoming.isNotEmpty() && cleanSaved.isNotEmpty() && (cleanIncoming.length >= 7) && (cleanSaved.length >= 7)) {
                 val endIncoming = cleanIncoming.takeLast(10)
                 val endSaved = cleanSaved.takeLast(10)
                 if (endIncoming == endSaved) {
@@ -51,12 +53,17 @@ object RingControlLogic {
      * and the contact's presence in the whitelist or blacklist.
      */
     fun shouldSilence(
-        senderInfo: String,
+        senderInfo: String?,
         whitelistedNumbers: Set<String>,
         blacklistedNumbers: Set<String>,
         isGlobalSilenceEnabled: Boolean,
         sharedPrefs: SharedPreferences
     ): Boolean {
+        if (senderInfo.isNullOrEmpty()) {
+            // If we don't know who is calling, follow the global silence setting
+            return isGlobalSilenceEnabled
+        }
+
         // If they are explicitly blacklisted, always silence
         if (findWhitelistedMatch(senderInfo, blacklistedNumbers, sharedPrefs) != null) {
             return true
