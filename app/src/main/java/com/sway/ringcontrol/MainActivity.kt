@@ -5,11 +5,9 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.database.Cursor
 import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
-import android.provider.ContactsContract
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,65 +16,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Message
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -92,6 +39,7 @@ import androidx.core.content.edit
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sway.ringcontrol.ui.theme.RingControlTheme
 
 /**
@@ -99,9 +47,6 @@ import com.sway.ringcontrol.ui.theme.RingControlTheme
  */
 data class RingControlContactData(val id: String, val name: String, val phoneNumbers: List<String>)
 
-/**
- * Main Activity of the application. Uses Compose for UI rendering.
- */
 class RingControlActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -114,12 +59,9 @@ class RingControlActivity : ComponentActivity() {
     }
 }
 
-/**
- * Root Composable that manages the high-level state of the app.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RingControlAppRoot() {
+fun RingControlAppRoot(vm: RingControlViewModel = viewModel()) {
     val context = LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("RingControlPrefs", Context.MODE_PRIVATE) }
     
@@ -127,9 +69,7 @@ fun RingControlAppRoot() {
     var editingContacts by remember { mutableStateOf<List<RingControlContactData>>(emptyList()) }
 
     var hasContactsPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
-        )
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED)
     }
     var hasPhoneStatePermission by remember {
         mutableStateOf(
@@ -140,29 +80,20 @@ fun RingControlAppRoot() {
     }
     
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    val notificationPolicyState = remember {
-        mutableStateOf(notificationManager.isNotificationPolicyAccessGranted)
-    }
-    var hasNotificationPolicyAccess by notificationPolicyState
-    
+    var hasNotificationPolicyAccess by remember { mutableStateOf(notificationManager.isNotificationPolicyAccessGranted) }
     var hasNotificationListenerAccess by remember {
-        mutableStateOf(
-            Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")?.contains(context.packageName) ?: false
-        )
+        mutableStateOf(Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")?.contains(context.packageName) ?: false)
     }
     
-    var setupFinished by remember { 
-        mutableStateOf(sharedPrefs.getBoolean("setup_finished", false)) 
-    }
+    var setupFinished by remember { mutableStateOf(sharedPrefs.getBoolean("setup_finished", false)) }
 
-    val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         hasContactsPermission = permissions[Manifest.permission.READ_CONTACTS] ?: hasContactsPermission
-        val phoneStatus = (permissions[Manifest.permission.READ_PHONE_STATE] ?: false) &&
-                          (permissions[Manifest.permission.READ_CALL_LOG] ?: false) &&
-                          (permissions[Manifest.permission.RECEIVE_SMS] ?: false)
-        hasPhoneStatePermission = phoneStatus
+        hasPhoneStatePermission = (permissions[Manifest.permission.READ_PHONE_STATE] ?: false) &&
+                                 (permissions[Manifest.permission.READ_CALL_LOG] ?: false) &&
+                                 (permissions[Manifest.permission.RECEIVE_SMS] ?: false)
+        
+        if (hasContactsPermission) vm.refreshContacts()
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -170,13 +101,13 @@ fun RingControlAppRoot() {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 hasContactsPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
-                
                 hasPhoneStatePermission = (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) &&
-                (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED) &&
-                (ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED)
-                
-                notificationPolicyState.value = notificationManager.isNotificationPolicyAccessGranted
+                                        (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED) &&
+                                        (ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED)
+                hasNotificationPolicyAccess = notificationManager.isNotificationPolicyAccessGranted
                 hasNotificationListenerAccess = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")?.contains(context.packageName) ?: false
+                
+                if (hasContactsPermission && vm.contacts.isEmpty()) vm.refreshContacts()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -201,31 +132,11 @@ fun RingControlAppRoot() {
     ) { innerPadding ->
         if (setupFinished && allGranted) {
             Column(modifier = Modifier.padding(innerPadding)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Silence Non-Whitelisted", style = MaterialTheme.typography.titleMedium)
-                    
-                    var isGlobalSilence by remember { 
-                        mutableStateOf(sharedPrefs.getBoolean("global_silence", false)) 
-                    }
-                    Switch(
-                        checked = isGlobalSilence,
-                        onCheckedChange = { 
-                            isGlobalSilence = it
-                            sharedPrefs.edit { putBoolean("global_silence", it) }
-                        },
-                        modifier = Modifier.scale(0.8f)
-                    )
-                }
+                SettingsSection(sharedPrefs)
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 
                 Box(modifier = Modifier.fillMaxSize()) {
-                    RingControlContactList { selectedContacts ->
+                    RingControlContactList(vm) { selectedContacts ->
                         editingContacts = selectedContacts
                         showCustomDialog = true
                     }
@@ -238,38 +149,24 @@ fun RingControlAppRoot() {
                 hasDnd = hasNotificationPolicyAccess,
                 hasListener = hasNotificationListenerAccess,
                 onRequestPermissions = {
-                    launcher.launch(
-                        arrayOf(
-                            Manifest.permission.READ_CONTACTS,
-                            Manifest.permission.READ_PHONE_STATE,
-                            Manifest.permission.READ_CALL_LOG,
-                            Manifest.permission.RECEIVE_SMS,
-                        )
-                    )
+                    launcher.launch(arrayOf(
+                        Manifest.permission.READ_CONTACTS,
+                        Manifest.permission.READ_PHONE_STATE,
+                        Manifest.permission.READ_CALL_LOG,
+                        Manifest.permission.RECEIVE_SMS,
+                    ))
                 },
-                onRequestDnd = {
-                    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
-                },
-                onRequestListener = {
-                    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                },
+                onRequestDnd = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) },
+                onRequestListener = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
                 onComplete = {
                     sharedPrefs.edit { putBoolean("setup_finished", true) }
                     setupFinished = true
-                },
-                onRefresh = {
-                    hasContactsPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
-                    hasPhoneStatePermission = (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) &&
-                            (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED) &&
-                            (ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED)
-                    notificationPolicyState.value = notificationManager.isNotificationPolicyAccessGranted
-                    hasNotificationListenerAccess = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")?.contains(context.packageName) ?: false
                 }
             )
         }
     }
 
-    if (showCustomDialog && editingContacts.isNotEmpty()) {
+    if (showCustomDialog) {
         ContactCustomizationDialog(
             contacts = editingContacts,
             onDismiss = { 
@@ -281,9 +178,45 @@ fun RingControlAppRoot() {
     }
 }
 
-/**
- * Onboarding screen providing step-by-step guidance for granting permissions.
- */
+@Composable
+fun SettingsSection(sharedPrefs: android.content.SharedPreferences) {
+    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Silence Non-Whitelisted", style = MaterialTheme.typography.titleMedium)
+            var isGlobalSilence by remember { mutableStateOf(sharedPrefs.getBoolean("global_silence", false)) }
+            Switch(
+                checked = isGlobalSilence,
+                onCheckedChange = { 
+                    isGlobalSilence = it
+                    sharedPrefs.edit { putBoolean("global_silence", it) }
+                },
+                modifier = Modifier.scale(0.8f)
+            )
+        }
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Decline Spam Calls", style = MaterialTheme.typography.titleMedium)
+            var isSpamBlocking by remember { mutableStateOf(sharedPrefs.getBoolean("block_spam", true)) }
+            Switch(
+                checked = isSpamBlocking,
+                onCheckedChange = { 
+                    isSpamBlocking = it
+                    sharedPrefs.edit { putBoolean("block_spam", it) }
+                },
+                modifier = Modifier.scale(0.8f)
+            )
+        }
+    }
+}
+
 @Composable
 fun OnboardingScreen(
     hasContacts: Boolean,
@@ -293,16 +226,15 @@ fun OnboardingScreen(
     onRequestPermissions: () -> Unit,
     onRequestDnd: () -> Unit,
     onRequestListener: () -> Unit,
-    onComplete: () -> Unit,
-    onRefresh: () -> Unit,
+    onComplete: () -> Unit
 ) {
     var currentStep by remember { mutableIntStateOf(0) }
     val allGranted = hasContacts && hasPhone && hasDnd && hasListener
     
     LaunchedEffect(hasContacts, hasPhone, hasDnd, hasListener) {
-        if (((hasContacts && hasPhone) && (currentStep == 1))) currentStep = 2
-        if ((hasDnd && (currentStep == 2))) currentStep = 3
-        if ((hasListener && (currentStep == 3))) currentStep = 4
+        if (hasContacts && hasPhone && currentStep == 1) currentStep = 2
+        if (hasDnd && currentStep == 2) currentStep = 3
+        if (hasListener && currentStep == 3) currentStep = 4
     }
 
     Column(
@@ -311,241 +243,96 @@ fun OnboardingScreen(
         verticalArrangement = Arrangement.Center
     ) {
         when (currentStep) {
-            0 -> OnboardingStep(
-                title = "Welcome to RingControl",
-                description = "Never miss an important call again. RingControl allows selected contacts to reach you even when your phone is on silent or Do Not Disturb.",
-                icon = Icons.Default.NotificationsActive,
-                buttonText = "Get Started",
-                onButtonClick = { currentStep = 1 }
-            )
-            1 -> OnboardingStep(
-                title = "Contacts & Communication",
-                description = "We need permission to see your contacts, and 'Phone' & 'SMS' access to detect when they are reaching out to you.",
-                icon = Icons.Default.Call,
-                buttonText = if (hasContacts && hasPhone) "Continue" else "Grant Access",
-                onButtonClick = if (hasContacts && hasPhone) { { currentStep = 2 } } else onRequestPermissions,
-                secondaryButton = {
-                    if (!(hasContacts && hasPhone)) {
-                        TextButton(onClick = onRefresh) { Text("Refresh Status") }
-                    }
-                }
-            )
-            2 -> OnboardingStep(
-                title = "Silence Override",
-                description = "To ring out loud during Do Not Disturb, we need 'Notification Policy' access. This lets the app temporarily bypass silence for your chosen contacts.",
-                icon = Icons.Default.Shield,
-                buttonText = if (hasDnd) "Continue" else "Open Settings",
-                onButtonClick = if (hasDnd) { { currentStep = 3 } } else onRequestDnd,
-                secondaryButton = {
-                    if (!hasDnd) {
-                        TextButton(onClick = onRefresh) { Text("Refresh Status") }
-                    }
-                }
-            )
-            3 -> OnboardingStep(
-                title = "Message Detection",
-                description = "To support RCS and modern chat apps, we need 'Notification Access'. This allows us to spot whitelisted messages even when your phone is locked.",
-                icon = Icons.AutoMirrored.Filled.Message,
-                buttonText = if (hasListener) "Continue" else "Allow Access",
-                onButtonClick = if (hasListener) { { currentStep = 4 } } else onRequestListener,
-                secondaryButton = {
-                    if (!hasListener) {
-                        TextButton(onClick = onRefresh) { Text("Refresh Status") }
-                    }
-                }
-            )
-            4 -> OnboardingStep(
-                title = "You're All Set!",
-                description = "All permissions have been granted. You can now go ahead and select the contacts you want to prioritize.",
-                icon = Icons.Default.CheckCircle,
-                buttonText = "Start Using App",
-                enabled = allGranted,
-                onButtonClick = onComplete
-            )
+            0 -> OnboardingStep("Welcome to RingControl", "Prioritize important contacts even on silent.", Icons.Default.NotificationsActive, "Get Started") { currentStep = 1 }
+            1 -> OnboardingStep("Contacts & Phone", "We need access to your contacts and call status.", Icons.Default.Call, if (hasContacts && hasPhone) "Continue" else "Grant Access") { if (hasContacts && hasPhone) currentStep = 2 else onRequestPermissions() }
+            2 -> OnboardingStep("Silence Override", "Requires 'Notification Policy' access to bypass DND.", Icons.Default.Shield, if (hasDnd) "Continue" else "Open Settings") { if (hasDnd) currentStep = 3 else onRequestDnd() }
+            3 -> OnboardingStep("Message Detection", "Allows monitoring RCS and chat apps.", Icons.AutoMirrored.Filled.Message, if (hasListener) "Continue" else "Allow Access") { if (hasListener) currentStep = 4 else onRequestListener() }
+            4 -> OnboardingStep("Ready!", "You're all set to pick your priority contacts.", Icons.Default.CheckCircle, "Start Using App", enabled = allGranted, onButtonClick = onComplete)
         }
         
         Spacer(Modifier.height(32.dp))
-        
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             repeat(5) { index ->
                 Card(
                     modifier = Modifier.size(if (index == currentStep) 12.dp else 8.dp),
                     shape = MaterialTheme.shapes.extraLarge,
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (index == currentStep) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                    )
+                    colors = CardDefaults.cardColors(containerColor = if (index == currentStep) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
                 ) {}
             }
         }
     }
 }
 
-/**
- * Helper Composable for a single onboarding slide.
- */
 @Composable
-fun OnboardingStep(
-    title: String,
-    description: String,
-    icon: ImageVector,
-    buttonText: String,
-    enabled: Boolean = true,
-    onButtonClick: () -> Unit,
-    secondaryButton: @Composable () -> Unit = {}
-) {
-    Icon(icon, contentDescription = null, modifier = Modifier.size(100.dp), tint = MaterialTheme.colorScheme.primary)
+fun OnboardingStep(title: String, description: String, icon: ImageVector, buttonText: String, enabled: Boolean = true, onButtonClick: () -> Unit) {
+    Icon(icon, null, modifier = Modifier.size(100.dp), tint = MaterialTheme.colorScheme.primary)
     Spacer(Modifier.height(32.dp))
     Text(title, style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center)
     Spacer(Modifier.height(16.dp))
     Text(description, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(48.dp))
-    Button(
-        onClick = onButtonClick,
-        modifier = Modifier.fillMaxWidth().height(56.dp),
-        enabled = enabled,
-        shape = MaterialTheme.shapes.large
-    ) {
-        Text(buttonText)
-    }
-    secondaryButton()
+    Button(onButtonClick, Modifier.fillMaxWidth().height(56.dp), enabled, shape = MaterialTheme.shapes.large) { Text(buttonText) }
 }
 
-/**
- * Screen showing the list of phone contacts with filtering and selection capabilities.
- */
 @Composable
-fun RingControlContactList(onConfigure: (List<RingControlContactData>) -> Unit) {
+fun RingControlContactList(vm: RingControlViewModel, onConfigure: (List<RingControlContactData>) -> Unit) {
     val context = LocalContext.current
-    var contacts by remember { mutableStateOf(emptyList<RingControlContactData>()) }
     val sharedPrefs = remember { context.getSharedPreferences("RingControlPrefs", Context.MODE_PRIVATE) }
     
-    var whitelistedNumbers by remember {
-        mutableStateOf(sharedPrefs.getStringSet("selected_numbers", emptySet()) ?: emptySet())
-    }
-    var blacklistedNumbers by remember {
-        mutableStateOf(sharedPrefs.getStringSet("blacklisted_numbers", emptySet()) ?: emptySet())
-    }
+    var whitelistedNumbers by remember { mutableStateOf(sharedPrefs.getStringSet("selected_numbers", emptySet()) ?: emptySet()) }
+    var blacklistedNumbers by remember { mutableStateOf(sharedPrefs.getStringSet("blacklisted_numbers", emptySet()) ?: emptySet()) }
     var selectedForBatch by remember { mutableStateOf(setOf<String>()) }
     var searchQuery by remember { mutableStateOf("") }
 
-    var whitelistedExpanded by remember { mutableStateOf(true) }
-    var blacklistedExpanded by remember { mutableStateOf(true) }
-    var othersExpanded by remember { mutableStateOf(true) }
-
-    // Automatically expand groups if searching
-    LaunchedEffect(searchQuery) {
-        if (searchQuery.isNotEmpty()) {
-            whitelistedExpanded = true
-            blacklistedExpanded = true
-            othersExpanded = true
-        }
+    val filteredContacts = remember(vm.contacts, searchQuery, whitelistedNumbers, blacklistedNumbers) {
+        val base = if (searchQuery.isEmpty()) vm.contacts 
+        else vm.contacts.filter { it.name.contains(searchQuery, true) || it.phoneNumbers.any { n -> n.contains(searchQuery) } }
+        
+        val whitelisted = base.filter { c -> c.phoneNumbers.any { whitelistedNumbers.contains(it) } }
+        val blacklisted = base.filter { c -> c.phoneNumbers.any { blacklistedNumbers.contains(it) } && c.phoneNumbers.none { whitelistedNumbers.contains(it) } }
+        val others = base.filter { c -> c.phoneNumbers.none { whitelistedNumbers.contains(it) } && c.phoneNumbers.none { blacklistedNumbers.contains(it) } }
+        
+        listOf("Whitelisted" to whitelisted, "Blacklisted" to blacklisted, "Other Contacts" to others)
     }
-
-    val whitelistedGroup by remember {
-        derivedStateOf {
-            val base = if (searchQuery.isEmpty()) contacts
-            else contacts.filter { it.name.contains(searchQuery, ignoreCase = true) || it.phoneNumbers.any { num -> num.contains(searchQuery) } }
-            base.filter { contact -> contact.phoneNumbers.any { whitelistedNumbers.contains(it) } }.sortedBy { it.name }
-        }
-    }
-    
-    val blacklistedGroup by remember {
-        derivedStateOf {
-            val base = if (searchQuery.isEmpty()) contacts
-            else contacts.filter { it.name.contains(searchQuery, ignoreCase = true) || it.phoneNumbers.any { num -> num.contains(searchQuery) } }
-            base.filter { contact -> 
-                contact.phoneNumbers.any { blacklistedNumbers.contains(it) } && 
-                contact.phoneNumbers.none { whitelistedNumbers.contains(it) }
-            }.sortedBy { it.name }
-        }
-    }
-    
-    val otherGroup by remember {
-        derivedStateOf {
-            val base = if (searchQuery.isEmpty()) contacts
-            else contacts.filter { it.name.contains(searchQuery, ignoreCase = true) || it.phoneNumbers.any { num -> num.contains(searchQuery) } }
-            base.filter { contact -> 
-                contact.phoneNumbers.none { whitelistedNumbers.contains(it) } && 
-                contact.phoneNumbers.none { blacklistedNumbers.contains(it) }
-            }.sortedBy { it.name }
-        }
-    }
-
-    LaunchedEffect(Unit) { contacts = fetchPhoneContacts(context) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
                 placeholder = { Text("Search contacts...") },
-                leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.medium
             )
 
+            if (vm.isLoading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
             LazyColumn(contentPadding = PaddingValues(bottom = 80.dp)) {
-                if (whitelistedGroup.isNotEmpty()) {
-                    item { 
-                        ListHeader(
-                            text = "Whitelisted (${whitelistedGroup.size})", 
-                            isExpanded = whitelistedExpanded,
-                            onToggle = { whitelistedExpanded = !whitelistedExpanded }
-                        ) 
-                    }
-                    if (whitelistedExpanded) {
-                        items(whitelistedGroup) { contact ->
-                            ContactRowInstance(contact, whitelistedNumbers, blacklistedNumbers, selectedForBatch, sharedPrefs) { newW, newB, newS ->
-                                whitelistedNumbers = newW
-                                blacklistedNumbers = newB
-                                selectedForBatch = newS
-                            }
+                filteredContacts.forEach { (header, list) ->
+                    if (list.isNotEmpty()) {
+                        item { Text(header, Modifier.padding(16.dp, 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary) }
+                        items(list) { contact ->
+                            ContactRow(contact, whitelistedNumbers, blacklistedNumbers, selectedForBatch.contains(contact.id), 
+                                onStateChange = { newState ->
+                                    val newW = if (newState == 1) whitelistedNumbers + contact.phoneNumbers else whitelistedNumbers - contact.phoneNumbers.toSet()
+                                    val newB = if (newState == -1) blacklistedNumbers + contact.phoneNumbers else blacklistedNumbers - contact.phoneNumbers.toSet()
+                                    sharedPrefs.edit {
+                                        putStringSet("selected_numbers", newW)
+                                        putStringSet("blacklisted_numbers", newB)
+                                        contact.phoneNumbers.forEach { putString("name_$it", contact.name) }
+                                    }
+                                    whitelistedNumbers = newW
+                                    blacklistedNumbers = newB
+                                },
+                                onToggleBatch = { selected ->
+                                    selectedForBatch = if (selected) selectedForBatch + contact.id else selectedForBatch - contact.id
+                                }
+                            )
                         }
-                    }
-                }
-
-                if (blacklistedGroup.isNotEmpty()) {
-                    item { 
-                        ListHeader(
-                            text = "Blacklisted (${blacklistedGroup.size})", 
-                            isExpanded = blacklistedExpanded,
-                            onToggle = { blacklistedExpanded = !blacklistedExpanded }
-                        ) 
-                    }
-                    if (blacklistedExpanded) {
-                        items(blacklistedGroup) { contact ->
-                            ContactRowInstance(contact, whitelistedNumbers, blacklistedNumbers, selectedForBatch, sharedPrefs) { newW, newB, newS ->
-                                whitelistedNumbers = newW
-                                blacklistedNumbers = newB
-                                selectedForBatch = newS
-                            }
-                        }
-                    }
-                }
-
-                if (otherGroup.isNotEmpty()) {
-                    item { 
-                        ListHeader(
-                            text = "Other Contacts (${otherGroup.size})", 
-                            isExpanded = othersExpanded,
-                            onToggle = { othersExpanded = !othersExpanded }
-                        ) 
-                    }
-                    if (othersExpanded) {
-                        items(otherGroup) { contact ->
-                            ContactRowInstance(contact, whitelistedNumbers, blacklistedNumbers, selectedForBatch, sharedPrefs) { newW, newB, newS ->
-                                whitelistedNumbers = newW
-                                blacklistedNumbers = newB
-                                selectedForBatch = newS
-                            }
-                        }
-                    }
-                }
-                
-                if (whitelistedGroup.isEmpty() && blacklistedGroup.isEmpty() && otherGroup.isEmpty() && contacts.isNotEmpty()) {
-                    item {
-                        Text("No contacts match", modifier = Modifier.fillMaxWidth().padding(32.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
                     }
                 }
             }
@@ -554,13 +341,12 @@ fun RingControlContactList(onConfigure: (List<RingControlContactData>) -> Unit) 
         if (selectedForBatch.isNotEmpty()) {
             ExtendedFloatingActionButton(
                 onClick = { 
-                    onConfigure(contacts.filter { selectedForBatch.contains(it.id) }) 
+                    onConfigure(vm.contacts.filter { selectedForBatch.contains(it.id) }) 
                     selectedForBatch = emptySet() 
                 },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                containerColor = MaterialTheme.colorScheme.primaryContainer
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
             ) {
-                Icon(Icons.Default.Tune, contentDescription = null)
+                Icon(Icons.Default.Tune, null)
                 Spacer(Modifier.width(8.dp))
                 Text("Configure (${selectedForBatch.size})")
             }
@@ -568,354 +354,133 @@ fun RingControlContactList(onConfigure: (List<RingControlContactData>) -> Unit) 
     }
 }
 
-@Composable
-fun ListHeader(text: String, isExpanded: Boolean, onToggle: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onToggle() }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.secondary
-        )
-        Icon(
-            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-            contentDescription = if (isExpanded) "Collapse" else "Expand",
-            tint = MaterialTheme.colorScheme.secondary
-        )
-    }
-}
-
-@Composable
-fun ContactRowInstance(
-    contact: RingControlContactData,
-    whitelistedNumbers: Set<String>,
-    blacklistedNumbers: Set<String>,
-    selectedForBatch: Set<String>,
-    sharedPrefs: android.content.SharedPreferences,
-    onUpdate: (Set<String>, Set<String>, Set<String>) -> Unit
-) {
-    val isWhitelisted = contact.phoneNumbers.any { whitelistedNumbers.contains(it) }
-    val isBlacklisted = contact.phoneNumbers.any { blacklistedNumbers.contains(it) }
-    val isSelectedForBatch = selectedForBatch.contains(contact.id)
-
-    RingControlContactRow(
-        contact = contact,
-        isWhitelisted = isWhitelisted,
-        isBlacklisted = isBlacklisted,
-        isSelectedForBatch = isSelectedForBatch,
-        onStateChange = { newState ->
-            val newWhitelist = if (newState == 1) whitelistedNumbers + contact.phoneNumbers else whitelistedNumbers - contact.phoneNumbers.toSet()
-            val newBlacklist = if (newState == -1) blacklistedNumbers + contact.phoneNumbers else blacklistedNumbers - contact.phoneNumbers.toSet()
-            
-            sharedPrefs.edit(commit = false) {
-                putStringSet("selected_numbers", newWhitelist)
-                putStringSet("blacklisted_numbers", newBlacklist)
-                contact.phoneNumbers.forEach { putString("name_$it", contact.name) }
-            }
-            onUpdate(newWhitelist, newBlacklist, selectedForBatch)
-        }
-    ) { nowSelected ->
-        val newBatch = if (nowSelected) selectedForBatch + contact.id else selectedForBatch - contact.id
-        onUpdate(whitelistedNumbers, blacklistedNumbers, newBatch)
-    }
-}
-
-
-/**
- * Single row in the contact list representing a contact and its current whitelist/blacklist status.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RingControlContactRow(
-    contact: RingControlContactData, 
-    isWhitelisted: Boolean,
-    isBlacklisted: Boolean,
-    isSelectedForBatch: Boolean,
-    onStateChange: (Int) -> Unit,
-    onBatchSelectChange: (Boolean) -> Unit
-) {
+fun ContactRow(contact: RingControlContactData, whitelisted: Set<String>, blacklisted: Set<String>, isSelected: Boolean, onStateChange: (Int) -> Unit, onToggleBatch: (Boolean) -> Unit) {
+    val isW = contact.phoneNumbers.any { whitelisted.contains(it) }
+    val isB = contact.phoneNumbers.any { blacklisted.contains(it) }
     val haptic = LocalHapticFeedback.current
-    val currentState = when {
-        isWhitelisted -> 2
-        isBlacklisted -> 0
-        else -> 1
-    }
+    val currentState = when { isW -> 2; isB -> 0; else -> 1 }
     val options = listOf("Block", "Off", "Ring")
 
     ListItem(
-        modifier = Modifier
-            .combinedClickable(
-                onClick = {
-                    if (isSelectedForBatch) {
-                        onBatchSelectChange(false)
-                    }
-                },
-                onLongClick = { 
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onBatchSelectChange(!isSelectedForBatch) 
-                }
-            ),
-        headlineContent = { 
-            Text(
-                contact.name, 
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = if (isWhitelisted || isBlacklisted) FontWeight.Bold else FontWeight.Normal, 
-                color = when {
-                    isSelectedForBatch -> MaterialTheme.colorScheme.onTertiaryContainer
-                    isWhitelisted -> MaterialTheme.colorScheme.primary
-                    isBlacklisted -> MaterialTheme.colorScheme.error
-                    else -> MaterialTheme.colorScheme.onSurface
-                }
-            ) 
-        },
+        modifier = Modifier.combinedClickable(onClick = { if (isSelected) onToggleBatch(false) }, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onToggleBatch(!isSelected) }),
+        headlineContent = { Text(contact.name, style = MaterialTheme.typography.titleMedium, color = if (isW) MaterialTheme.colorScheme.primary else if (isB) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) },
         supportingContent = {
-            Column {
-                Spacer(Modifier.height(4.dp))
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    options.forEachIndexed { index, label ->
-                        SegmentedButton(
-                            shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                            onClick = { onStateChange(index - 1) },
-                            selected = index == currentState,
-                            icon = {}, 
-                            colors = if ((index == 0) && (currentState == 0)) {
-                                SegmentedButtonDefaults.colors(activeContainerColor = MaterialTheme.colorScheme.errorContainer, activeContentColor = MaterialTheme.colorScheme.error)
-                            } else {
-                                SegmentedButtonDefaults.colors()
-                            }
-                        ) {
-                            Text(label, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                options.forEachIndexed { index, label ->
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                        onClick = { onStateChange(index - 1) },
+                        selected = index == currentState,
+                        icon = {},
+                        colors = if (index == 0 && currentState == 0) SegmentedButtonDefaults.colors(activeContainerColor = MaterialTheme.colorScheme.errorContainer, activeContentColor = MaterialTheme.colorScheme.error) else SegmentedButtonDefaults.colors()
+                    ) { Text(label, style = MaterialTheme.typography.labelSmall) }
                 }
             }
         },
-        colors = ListItemDefaults.colors(
-            containerColor = if (isSelectedForBatch) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surface
-        )
+        colors = ListItemDefaults.colors(containerColor = if (isSelected) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surface)
     )
 }
 
-/**
- * Dialog for customizing ringtones and vibrations for specific contacts.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactCustomizationDialog(
-    contacts: List<RingControlContactData>,
-    onDismiss: () -> Unit,
-    sharedPrefs: android.content.SharedPreferences
-) {
+fun ContactCustomizationDialog(contacts: List<RingControlContactData>, onDismiss: () -> Unit, sharedPrefs: android.content.SharedPreferences) {
     val context = LocalContext.current
-    val isMultiSelect = contacts.size > 1
-    
-    var callAlwaysRing by remember { mutableStateOf(true) }
-    var callVibrationPattern by remember { mutableStateOf("Default") }
-    var callRingtoneName by remember { mutableStateOf("System Default") }
-    var callRingtoneUri by remember { mutableStateOf<String?>(null) }
-
-    var smsAlwaysRing by remember { mutableStateOf(false) }
-    var smsVibrationPattern by remember { mutableStateOf("Default") }
-    var smsRingtoneName by remember { mutableStateOf("System Default") }
-    var smsRingtoneUri by remember { mutableStateOf<String?>(null) }
-    
-    var customMatchName by remember { mutableStateOf("") }
+    val isMulti = contacts.size > 1
+    var callAlways by remember { mutableStateOf(true) }
+    var callVib by remember { mutableStateOf("Default") }
+    var callRingName by remember { mutableStateOf("Default") }
+    var callRingUri by remember { mutableStateOf<String?>(null) }
+    var smsAlways by remember { mutableStateOf(false) }
+    var smsVib by remember { mutableStateOf("Default") }
+    var smsRingName by remember { mutableStateOf("Default") }
+    var smsRingUri by remember { mutableStateOf<String?>(null) }
+    var customName by remember { mutableStateOf("") }
 
     LaunchedEffect(contacts) {
-        if (!isMultiSelect) {
-            val contact = contacts.first()
-            val firstNum = contact.phoneNumbers.firstOrNull() ?: ""
-            callAlwaysRing = sharedPrefs.getBoolean("always_ring_$firstNum", true)
-            callVibrationPattern = sharedPrefs.getString("vib_$firstNum", "Default") ?: "Default"
-            callRingtoneName = sharedPrefs.getString("ring_name_$firstNum", "System Default") ?: "System Default"
-            callRingtoneUri = sharedPrefs.getString("ring_uri_$firstNum", null)
+        if (!isMulti) {
+            val num = contacts.first().phoneNumbers.firstOrNull() ?: ""
+            callAlways = sharedPrefs.getBoolean("always_ring_$num", true)
+            callVib = sharedPrefs.getString("vib_$num", "Default") ?: "Default"
+            callRingName = sharedPrefs.getString("ring_name_$num", "Default") ?: "Default"
+            callRingUri = sharedPrefs.getString("ring_uri_$num", null)
+            smsAlways = sharedPrefs.getBoolean("sms_always_ring_$num", false)
+            smsVib = sharedPrefs.getString("sms_vib_$num", "Default") ?: "Default"
+            smsRingName = sharedPrefs.getString("sms_ring_name_$num", "Default") ?: "Default"
+            smsRingUri = sharedPrefs.getString("sms_ring_uri_$num", null)
+            customName = sharedPrefs.getString("custom_name_$num", "") ?: ""
+        }
+    }
 
-            smsAlwaysRing = sharedPrefs.getBoolean("sms_always_ring_$firstNum", false)
-            smsVibrationPattern = sharedPrefs.getString("sms_vib_$firstNum", "Default") ?: "Default"
-            smsRingtoneName = sharedPrefs.getString("sms_ring_name_$firstNum", "System Default") ?: "System Default"
-            smsRingtoneUri = sharedPrefs.getString("sms_ring_uri_$firstNum", null)
-            
-            customMatchName = sharedPrefs.getString("custom_name_$firstNum", "") ?: ""
+    val ringPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        if (res.resultCode == ComponentActivity.RESULT_OK) {
+            val uri = res.data?.getParcelableExtra<android.net.Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            uri?.let { callRingUri = it.toString(); callRingName = RingtoneManager.getRingtone(context, it).getTitle(context) }
         }
     }
     
-    val callPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == ComponentActivity.RESULT_OK) {
-            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, android.net.Uri::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
-            }
-            uri?.let {
-                callRingtoneName = RingtoneManager.getRingtone(context, it).getTitle(context)
-                callRingtoneUri = it.toString()
-            }
-        }
-    }
-
-    val smsPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == ComponentActivity.RESULT_OK) {
-            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, android.net.Uri::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
-            }
-            uri?.let {
-                smsRingtoneName = RingtoneManager.getRingtone(context, it).getTitle(context)
-                smsRingtoneUri = it.toString()
-            }
+    val smsPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        if (res.resultCode == ComponentActivity.RESULT_OK) {
+            val uri = res.data?.getParcelableExtra<android.net.Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            uri?.let { smsRingUri = it.toString(); smsRingName = RingtoneManager.getRingtone(context, it).getTitle(context) }
         }
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isMultiSelect) "Setup ${contacts.size} Contacts" else "Setup ${contacts.first().name}") },
+        title = { Text(if (isMulti) "Setup ${contacts.size} Contacts" else "Setup ${contacts.first().name}") },
         text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
                     Text("CALL ALERTS", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Bypass Silence & Ring", modifier = Modifier.weight(1f))
-                        Switch(checked = callAlwaysRing, onCheckedChange = { callAlwaysRing = it })
-                    }
-                    ListItem(
-                        headlineContent = { Text("Sound") },
-                        supportingContent = { Text(callRingtoneName) },
-                        trailingContent = { TextButton(onClick = { callPicker.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER).putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_RINGTONE)) }) { Text("Pick") } }
-                    )
-                    VibrationDropdown(callVibrationPattern) { callVibrationPattern = it }
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text("Bypass Silence", Modifier.weight(1f)); Switch(callAlways, { callAlways = it }) }
+                    ListItem(headlineContent = { Text("Sound") }, supportingContent = { Text(callRingName) }, trailingContent = { TextButton({ ringPicker.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER).putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_RINGTONE)) }) { Text("Pick") } })
+                    VibrationDropdown(callVib) { callVib = it }
                 }
-
+                item { HorizontalDivider() }
                 item {
-                    HorizontalDivider()
-                    Spacer(Modifier.height(8.dp))
                     Text("SMS/RCS ALERTS", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Bypass Silence & Alert", modifier = Modifier.weight(1f))
-                        Switch(checked = smsAlwaysRing, onCheckedChange = { smsAlwaysRing = it })
-                    }
-                    ListItem(
-                        headlineContent = { Text("Sound") },
-                        supportingContent = { Text(smsRingtoneName) },
-                        trailingContent = { TextButton(onClick = { smsPicker.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER).putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)) }) { Text("Pick") } }
-                    )
-                    VibrationDropdown(smsVibrationPattern) { smsVibrationPattern = it }
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text("Bypass Silence", Modifier.weight(1f)); Switch(smsAlways, { smsAlways = it }) }
+                    ListItem(headlineContent = { Text("Sound") }, supportingContent = { Text(smsRingName) }, trailingContent = { TextButton({ smsPicker.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER).putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)) }) { Text("Pick") } })
+                    VibrationDropdown(smsVib) { smsVib = it }
                 }
-                item {
-                    HorizontalDivider()
-                    Spacer(Modifier.height(8.dp))
-                    Text("APP MATCHING (Facebook, etc.)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = customMatchName,
-                        onValueChange = { customMatchName = it },
-                        label = { Text("Exact name shown in notifications") },
-                        placeholder = { Text("e.g. John Smith") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        supportingText = { Text("Used for matching apps like Messenger that don't use phone numbers.") }
-                    )
+                if (!isMulti) {
+                    item { HorizontalDivider() }
+                    item {
+                        Text("APP MATCHING", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        OutlinedTextField(customName, { customName = it }, label = { Text("Exact name in notifications") }, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    sharedPrefs.edit {
-                        contacts.forEach { contact ->
-                            contact.phoneNumbers.forEach { num ->
-                                putBoolean("always_ring_$num", callAlwaysRing)
-                                putString("vib_$num", callVibrationPattern)
-                                callRingtoneUri?.let { putString("ring_uri_$num", it) }
-                                putString("ring_name_$num", callRingtoneName)
-
-                                putBoolean("sms_always_ring_$num", smsAlwaysRing)
-                                putString("sms_vib_$num", smsVibrationPattern)
-                                smsRingtoneUri?.let { putString("sms_ring_uri_$num", it) }
-                                putString("sms_ring_name_$num", smsRingtoneName)
-                                putString("name_$num", contact.name)
-                                putString("custom_name_$num", customMatchName)
-                            }
+            Button(onClick = {
+                sharedPrefs.edit {
+                    contacts.forEach { c ->
+                        c.phoneNumbers.forEach { n ->
+                            putBoolean("always_ring_$n", callAlways); putString("vib_$n", callVib); callRingUri?.let { putString("ring_uri_$n", it) }; putString("ring_name_$n", callRingName)
+                            putBoolean("sms_always_ring_$n", smsAlways); putString("sms_vib_$n", smsVib); smsRingUri?.let { putString("sms_ring_uri_$n", it) }; putString("sms_ring_name_$n", smsRingName)
+                            putString("name_$n", c.name); putString("custom_name_$n", customName)
                         }
                     }
-                    onDismiss()
                 }
-            ) { Text("Save Settings") }
+                onDismiss()
+            }) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } }
     )
 }
 
-/**
- * Dropdown for choosing from predefined vibration patterns.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VibrationDropdown(current: String, onSelect: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(value = false) }
-    val patterns = listOf("Default", "Pulse", "Heartbeat", "SOS", "Rapid")
-
-    Column {
-        Text("Vibration", style = MaterialTheme.typography.labelSmall)
-        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-            TextField(
-                value = current,
-                onValueChange = {},
-                readOnly = true,
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                colors = ExposedDropdownMenuDefaults.textFieldColors()
-            )
-            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                patterns.forEach { pattern ->
-                    DropdownMenuItem(text = { Text(pattern) }, onClick = { onSelect(pattern); expanded = false })
-                }
-            }
+    var exp by remember { mutableStateOf(false) }
+    val pats = listOf("Default", "Pulse", "Heartbeat", "SOS", "Rapid")
+    ExposedDropdownMenuBox(exp, { exp = it }) {
+        OutlinedTextField(current, {}, readOnly = true, label = { Text("Vibration") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(exp) }, modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth())
+        ExposedDropdownMenu(exp, { exp = false }) {
+            pats.forEach { p -> DropdownMenuItem({ Text(p) }, { onSelect(p); exp = false }) }
         }
     }
-}
-
-/**
- * Helper to fetch contacts using ContentResolver.
- */
-fun fetchPhoneContacts(context: Context): List<RingControlContactData> {
-    val contactMap = mutableMapOf<String, MutableList<String>>()
-    val nameMap = mutableMapOf<String, String>()
-    val contentResolver = context.contentResolver
-    val cursor: Cursor? = contentResolver.query(
-        ContactsContract.CommonDataKinds.Phone.CONTENT_URI, 
-        null, 
-        null, 
-        null, 
-        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
-    )
-
-    cursor?.use {
-        val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-        val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-        val idIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
-
-        while (it.moveToNext()) {
-            if ((nameIndex >= 0) && (numberIndex >= 0) && (idIndex >= 0)) {
-                val name = it.getString(nameIndex) ?: "Unknown"
-                val number = it.getString(numberIndex)?.replace("\\s".toRegex(), "") ?: ""
-                val id = it.getString(idIndex) ?: ""
-                if (number.isNotEmpty()) {
-                    contactMap.getOrPut(id) { mutableListOf() }.add(number)
-                    nameMap[id] = name
-                }
-            }
-        }
-    }
-    return contactMap.map { (id, numbers) -> 
-        RingControlContactData(id, nameMap[id] ?: "Unknown", numbers.distinct()) 
-    }.sortedBy { it.name }
 }

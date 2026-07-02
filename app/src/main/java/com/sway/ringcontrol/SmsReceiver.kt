@@ -20,18 +20,22 @@ class SmsReceiver : BroadcastReceiver() {
 
     private fun checkAndOverride(context: Context, senderNumber: String) {
         val sharedPrefs = context.getSharedPreferences("RingControlPrefs", Context.MODE_PRIVATE)
-        val whitelistedNumbers = sharedPrefs.getStringSet("selected_numbers", emptySet()) ?: emptySet()
-        val blacklistedNumbers = sharedPrefs.getStringSet("blacklisted_numbers", emptySet()) ?: emptySet()
+        
+        // Optimize: Build lists once
+        val whitelistedNums = sharedPrefs.getStringSet("selected_numbers", emptySet()) ?: emptySet()
+        val blacklistedNums = sharedPrefs.getStringSet("blacklisted_numbers", emptySet()) ?: emptySet()
+        val whitelist = RingControlLogic.buildMatchList(whitelistedNums, sharedPrefs)
+        val blacklist = RingControlLogic.buildMatchList(blacklistedNums, sharedPrefs)
         val isGlobalSilence = sharedPrefs.getBoolean("global_silence", false)
 
         // 1. SILENCE CHECK FIRST
-        if (RingControlLogic.shouldSilence(senderNumber, whitelistedNumbers, blacklistedNumbers, isGlobalSilence, sharedPrefs)) {
+        if (RingControlLogic.shouldSilence(senderNumber, whitelist, blacklist, isGlobalSilence)) {
             // KILL the broadcast if it's blacklisted or global silence is ON
             abortBroadcast()
             return
         }
 
-        val matchedNumber = RingControlLogic.findWhitelistedMatch(senderNumber, whitelistedNumbers, sharedPrefs)
+        val matchedNumber = RingControlLogic.findWhitelistedMatch(senderNumber, whitelist)
 
         if (matchedNumber != null) {
             val alwaysRing = sharedPrefs.getBoolean("sms_always_ring_$matchedNumber", false)

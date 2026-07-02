@@ -3,37 +3,56 @@ package com.sway.ringcontrol
 import android.content.SharedPreferences
 
 /**
+ * Data class representing the minimal info needed to match a contact.
+ * Used to avoid redundant SharedPreferences lookups during matching.
+ */
+data class ContactMatchInfo(
+    val phoneNumber: String,
+    val contactName: String?,
+    val customMatchName: String?
+)
+
+/**
  * Utility class containing the core matching logic for RingControl.
  * This is extracted from Receivers to allow for isolated Unit Testing.
  */
 object RingControlLogic {
 
     /**
-     * Checks if the sender information matches any contact in the whitelist.
+     * Builds a list of ContactMatchInfo from SharedPreferences for efficient matching.
+     */
+    fun buildMatchList(numbers: Set<String>, sharedPrefs: SharedPreferences): List<ContactMatchInfo> {
+        return numbers.map { number ->
+            ContactMatchInfo(
+                phoneNumber = number,
+                contactName = sharedPrefs.getString("name_$number", null),
+                customMatchName = sharedPrefs.getString("custom_name_$number", null)
+            )
+        }
+    }
+
+    /**
+     * Checks if the sender information matches any contact in the provided list.
      * 
      * @param senderInfo The raw string from a notification title or phone intent.
-     * @param whitelistedNumbers The set of phone numbers saved in preferences.
-     * @param sharedPrefs Access to stored names and custom matching names.
+     * @param matchList The pre-fetched list of contact info.
      * @return The matched phone number if found, null otherwise.
      */
     fun findWhitelistedMatch(
         senderInfo: String?,
-        whitelistedNumbers: Set<String>,
-        sharedPrefs: SharedPreferences,
+        matchList: List<ContactMatchInfo>
     ): String? {
         if (senderInfo.isNullOrEmpty()) return null
 
         val cleanIncoming = senderInfo.replace("\\D".toRegex(), "")
 
-        for (savedNumber in whitelistedNumbers) {
-            val cleanSaved = savedNumber.replace("\\D".toRegex(), "")
-            val customMatchName = sharedPrefs.getString("custom_name_$savedNumber", "")
-            val contactName = sharedPrefs.getString("name_$savedNumber", "")
+        for (contact in matchList) {
+            val cleanSaved = contact.phoneNumber.replace("\\D".toRegex(), "")
 
             // 1. Strict Name Match (Case Insensitive)
-            if ((!customMatchName.isNullOrEmpty() && customMatchName.equals(senderInfo, ignoreCase = true)) ||
-                (!contactName.isNullOrEmpty() && contactName.equals(senderInfo, ignoreCase = true))) {
-                return savedNumber
+            if ((!contact.customMatchName.isNullOrEmpty() && contact.customMatchName.equals(senderInfo, ignoreCase = true)) ||
+                (!contact.contactName.isNullOrEmpty() && contact.contactName.equals(senderInfo, ignoreCase = true))) {
+                return contact.phoneNumber
             }
 
             // 2. Strict 10-Digit Number Match
@@ -41,7 +60,7 @@ object RingControlLogic {
                 val endIncoming = cleanIncoming.takeLast(10)
                 val endSaved = cleanSaved.takeLast(10)
                 if (endIncoming == endSaved) {
-                    return savedNumber
+                    return contact.phoneNumber
                 }
             }
         }
@@ -54,10 +73,9 @@ object RingControlLogic {
      */
     fun shouldSilence(
         senderInfo: String?,
-        whitelistedNumbers: Set<String>,
-        blacklistedNumbers: Set<String>,
-        isGlobalSilenceEnabled: Boolean,
-        sharedPrefs: SharedPreferences
+        whitelist: List<ContactMatchInfo>,
+        blacklist: List<ContactMatchInfo>,
+        isGlobalSilenceEnabled: Boolean
     ): Boolean {
         if (senderInfo.isNullOrEmpty()) {
             // If we don't know who is calling, follow the global silence setting
@@ -65,12 +83,12 @@ object RingControlLogic {
         }
 
         // If they are explicitly blacklisted, always silence
-        if (findWhitelistedMatch(senderInfo, blacklistedNumbers, sharedPrefs) != null) {
+        if (findWhitelistedMatch(senderInfo, blacklist) != null) {
             return true
         }
 
         // If they are whitelisted, never silence
-        if (findWhitelistedMatch(senderInfo, whitelistedNumbers, sharedPrefs) != null) {
+        if (findWhitelistedMatch(senderInfo, whitelist) != null) {
             return false
         }
 
