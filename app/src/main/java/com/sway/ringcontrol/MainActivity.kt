@@ -1,6 +1,7 @@
 package com.sway.ringcontrol
 
 import android.Manifest
+import android.app.Activity
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -14,7 +15,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,7 +31,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -65,7 +64,7 @@ fun RingControlAppRoot(vm: RingControlViewModel = viewModel()) {
     val context = LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("RingControlPrefs", Context.MODE_PRIVATE) }
     
-    var showCustomDialog by remember { mutableStateOf(false) }
+    var showCustomDialog by remember { mutableStateOf(value = false) }
     var editingContacts by remember { mutableStateOf<List<RingControlContactData>>(emptyList()) }
 
     var hasContactsPermission by remember {
@@ -75,7 +74,7 @@ fun RingControlAppRoot(vm: RingControlViewModel = viewModel()) {
         mutableStateOf(
             (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) &&
             (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED) &&
-            (ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED)
+            (ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED),
         )
     }
     
@@ -149,19 +148,21 @@ fun RingControlAppRoot(vm: RingControlViewModel = viewModel()) {
                 hasDnd = hasNotificationPolicyAccess,
                 hasListener = hasNotificationListenerAccess,
                 onRequestPermissions = {
-                    launcher.launch(arrayOf(
-                        Manifest.permission.READ_CONTACTS,
-                        Manifest.permission.READ_PHONE_STATE,
-                        Manifest.permission.READ_CALL_LOG,
-                        Manifest.permission.RECEIVE_SMS,
-                    ))
+                    launcher.launch(
+                        arrayOf(
+                            Manifest.permission.READ_CONTACTS,
+                            Manifest.permission.READ_PHONE_STATE,
+                            Manifest.permission.READ_CALL_LOG,
+                            Manifest.permission.RECEIVE_SMS,
+                        ),
+                    )
                 },
                 onRequestDnd = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) },
                 onRequestListener = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
                 onComplete = {
                     sharedPrefs.edit { putBoolean("setup_finished", true) }
                     setupFinished = true
-                }
+                },
             )
         }
     }
@@ -173,7 +174,7 @@ fun RingControlAppRoot(vm: RingControlViewModel = viewModel()) {
                 showCustomDialog = false 
                 editingContacts = emptyList()
             },
-            sharedPrefs = sharedPrefs
+            sharedPrefs = sharedPrefs,
         )
     }
 }
@@ -232,9 +233,9 @@ fun OnboardingScreen(
     val allGranted = hasContacts && hasPhone && hasDnd && hasListener
     
     LaunchedEffect(hasContacts, hasPhone, hasDnd, hasListener) {
-        if (hasContacts && hasPhone && currentStep == 1) currentStep = 2
-        if (hasDnd && currentStep == 2) currentStep = 3
-        if (hasListener && currentStep == 3) currentStep = 4
+        if ((hasContacts && hasPhone) && (currentStep == 1)) currentStep = 2
+        if (hasDnd && (currentStep == 2)) currentStep = 3
+        if (hasListener && (currentStep == 3)) currentStep = 4
     }
 
     Column(
@@ -414,15 +415,25 @@ fun ContactCustomizationDialog(contacts: List<RingControlContactData>, onDismiss
     }
 
     val ringPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
-        if (res.resultCode == ComponentActivity.RESULT_OK) {
-            val uri = res.data?.getParcelableExtra<android.net.Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        if (res.resultCode == Activity.RESULT_OK) {
+            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                res.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, android.net.Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                res.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            }
             uri?.let { callRingUri = it.toString(); callRingName = RingtoneManager.getRingtone(context, it).getTitle(context) }
         }
     }
     
     val smsPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
-        if (res.resultCode == ComponentActivity.RESULT_OK) {
-            val uri = res.data?.getParcelableExtra<android.net.Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        if (res.resultCode == Activity.RESULT_OK) {
+            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                res.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, android.net.Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                res.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            }
             uri?.let { smsRingUri = it.toString(); smsRingName = RingtoneManager.getRingtone(context, it).getTitle(context) }
         }
     }
