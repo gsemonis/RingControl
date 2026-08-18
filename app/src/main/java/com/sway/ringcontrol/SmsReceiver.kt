@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
+import android.util.Log
 
 class SmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -30,8 +31,10 @@ class SmsReceiver : BroadcastReceiver() {
 
         // 1. SILENCE CHECK FIRST
         if (RingControlLogic.shouldSilence(senderNumber, whitelist, blacklist, isGlobalSilence)) {
-            // KILL the broadcast if it's blacklisted or global silence is ON
-            abortBroadcast()
+            // Log it and stop processing in our app.
+            // DO NOT use abortBroadcast() as it can prevent the system messaging app 
+            // from receiving/writing the message to the database, causing sync hangs.
+            Log.d("RingControl", "SMS from $senderNumber silenced by logic.")
             return
         }
 

@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.Ringtone
@@ -118,6 +119,7 @@ class RingService : Service() {
 
     private fun playCallRingtone(uriStr: String?) {
         try {
+            val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
             val uri = uriStr?.toUri() ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
             ringtone = RingtoneManager.getRingtone(this, uri)
             
@@ -129,10 +131,18 @@ class RingService : Service() {
                 AudioAttributes.USAGE_NOTIFICATION_RINGTONE
             }
 
-            ringtone?.audioAttributes = AudioAttributes.Builder()
+            val attributes = AudioAttributes.Builder()
                 .setUsage(usage)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
+
+            // Request audio focus so we duck other apps (music/podcasts)
+            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(attributes)
+                .build()
+            audioManager.requestAudioFocus(focusRequest)
+
+            ringtone?.audioAttributes = attributes
             ringtone?.play()
         } catch (e: Exception) {
             Log.e("RingControl", "Call audio error", e)
@@ -141,6 +151,7 @@ class RingService : Service() {
 
     private fun playSmsAlert(uriStr: String?) {
         try {
+            val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
             val uri = uriStr?.toUri() ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
             
             val usage = if (isHeadsetConnected()) {
@@ -149,14 +160,20 @@ class RingService : Service() {
                 AudioAttributes.USAGE_NOTIFICATION
             }
 
+            val attributes = AudioAttributes.Builder()
+                .setUsage(usage)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+
+            // Request focus for the short alert
+            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(attributes)
+                .build()
+            audioManager.requestAudioFocus(focusRequest)
+
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(this@RingService, uri)
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(usage)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build(),
-                )
+                setAudioAttributes(attributes)
                 prepare()
                 start()
             }

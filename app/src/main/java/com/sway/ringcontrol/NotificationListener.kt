@@ -46,10 +46,10 @@ class NotificationListener : NotificationListenerService() {
             if (matchedNumber != null) {
                 triggerOverride(matchedNumber)
             } else if (isGlobalSilence) {
-                // If Global Silence is on, we don't necessarily want to DELETE the notification (destructive),
-                // but we might want to silence it. Since the system handles sound based on Ringer mode,
-                // and our override only triggers for whitelisted, this is naturally silent if phone is silent.
-                Log.d("RingControl", "GLOBAL SILENCE: Ignoring non-whitelisted notification from $title")
+                // If Global Silence is on, IMMEDIATELY dismiss the notification.
+                // This fulfills the user's request for "no notifications even on the phone".
+                Log.d("RingControl", "GLOBAL SILENCE: Dismissing non-whitelisted notification from $title")
+                cancelNotification(sbn.key)
             }
         }
     }

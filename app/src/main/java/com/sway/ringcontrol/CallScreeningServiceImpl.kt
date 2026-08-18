@@ -18,15 +18,20 @@ class CallScreeningServiceImpl : CallScreeningService() {
         
         // --- SPAM DETECTION ---
         val verificationStatus = callDetails.callerNumberVerificationStatus
-        val isSpam = verificationStatus == Connection.VERIFICATION_STATUS_FAILED
+        // VERIFICATION_STATUS_FAILED = Definite Spoof
+        // VERIFICATION_STATUS_NOT_VERIFIED = Potential Spam (Missing digital signature)
+        val isDefiniteSpam = verificationStatus == Connection.VERIFICATION_STATUS_FAILED
+        val isPotentialSpam = verificationStatus == Connection.VERIFICATION_STATUS_NOT_VERIFIED
+        
         val blockSpamEnabled = sharedPrefs.getBoolean("block_spam", true)
 
-        if (isSpam && blockSpamEnabled) {
-            Log.d("RingControl", "SCREENING: Rejecting spam from $incomingNumber")
+        if ((isDefiniteSpam || isPotentialSpam) && blockSpamEnabled) {
+            Log.d("RingControl", "SCREENING: Automatically rejecting SPAM (Definite=$isDefiniteSpam, Potential=$isPotentialSpam) from $incomingNumber")
             val spamResponse = CallResponse.Builder().apply {
-                setDisallowCall(true)
-                setRejectCall(true)
-                setSkipNotification(true)
+                setDisallowCall(true)      // Do not allow it to ring
+                setRejectCall(true)        // Declines the call (usually sends to VM or hangs up depending on carrier)
+                setSkipNotification(true)  // Hide from UI
+                setSkipCallLog(false)      // Keep in log for records
             }.build()
             respondToCall(callDetails, spamResponse)
             return
@@ -45,6 +50,10 @@ class CallScreeningServiceImpl : CallScreeningService() {
             Log.d("RingControl", "SCREENING: Silencing call from $incomingNumber")
             val silenceResponse = CallResponse.Builder().apply {
                 setSilenceCall(true)
+                // Ensure no missed call notification or "active incoming" UI shows up for silenced calls
+                setSkipNotification(true)
+                setDisallowCall(true)
+                setRejectCall(false) // Just silence, don't reject to voicemail yet (let it ring out silently)
             }.build()
             respondToCall(callDetails, silenceResponse)
             return
